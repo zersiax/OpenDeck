@@ -7,6 +7,13 @@
 	import { PRODUCT_NAME } from "$lib/singletons";
 
 	import { invoke } from "@tauri-apps/api/core";
+	import { createEventDispatcher } from "svelte";
+
+	const dispatch = createEventDispatcher();
+
+	// Keyboard navigation state
+	let selectedAction: Action | null = null;
+	let focusedActionIndex: number = -1;
 
 	let categories: { [name: string]: { icon?: string; actions: Action[] } } = {};
 	let plugins: any[] = [];
@@ -30,6 +37,11 @@
 			})
 			.filter(([_, { actions }]) => actions.length > 0);
 	}
+
+	function selectAction(action: Action) {
+		selectedAction = action;
+		dispatch("actionSelected", action);
+	}
 </script>
 
 <div class="flex flex-row items-center bg-neutral-100 dark:bg-neutral-700 border-2 dark:border-neutral-900 rounded-md">
@@ -44,7 +56,7 @@
 </div>
 
 <div class="grow mt-1 overflow-auto select-none">
-	{#each filteredCategories as [name, { icon, actions }]}
+	{#each filteredCategories as [name, { icon, actions }], categoryIndex}
 		<details open class="mb-2">
 			<summary class="text-xl font-semibold dark:text-neutral-300">
 				{#if icon || (actions[0] && plugins.find((x) => x.id == actions[0].plugin) && categories[name].actions.every((x) => x.plugin == actions[0].plugin))}
@@ -58,15 +70,29 @@
 				{/if}
 				<span class="ml-1">{name}</span>
 			</summary>
-			{#each actions as action}
+			{#each actions as action, actionIndex}
+				{@const globalIndex = filteredCategories
+					.slice(0, categoryIndex)
+					.reduce((sum, [_, { actions }]) => sum + actions.length, 0) + actionIndex}
 				<div
-					class="flex flex-row items-center my-2 space-x-2"
+					class="flex flex-row items-center my-2 space-x-2 cursor-pointer rounded-md p-1 transition-colors"
+					class:bg-blue-100={focusedActionIndex === globalIndex}
+					class:dark:bg-blue-900={focusedActionIndex === globalIndex}
+					class:bg-blue-200={selectedAction === action}
+					class:dark:bg-blue-800={selectedAction === action}
 					role="option"
-					aria-selected="false"
+					aria-selected={selectedAction === action}
 					tabindex="-1"
 					draggable="true"
 					title={$localisations?.[action.plugin]?.[action.uuid]?.Tooltip ?? action.tooltip}
 					on:dragstart={(event) => event.dataTransfer?.setData("action", JSON.stringify(action))}
+					on:click={() => selectAction(action)}
+					on:keydown={(event) => {
+						if (event.key === "Enter" || event.key === " ") {
+							event.preventDefault();
+							selectAction(action);
+						}
+					}}
 				>
 					<img
 						src={!action.icon.startsWith("opendeck/") ? "http://localhost:57118/" + action.icon : action.icon.replace("opendeck", "")}

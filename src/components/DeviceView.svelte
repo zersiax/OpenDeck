@@ -6,9 +6,12 @@
 
 	import Key from "./Key.svelte";
 
-	import { inspectedInstance, inspectedParentAction } from "$lib/propertyInspector";
+	import { copiedContext, inspectedInstance, inspectedParentAction } from "$lib/propertyInspector";
 
 	import { invoke } from "@tauri-apps/api/core";
+	import { createEventDispatcher } from "svelte";
+
+	const dispatch = createEventDispatcher();
 
 	export let device: DeviceInfo;
 	export let profile: Profile;
@@ -59,12 +62,309 @@
 		}
 	}
 
-	// Accessibility helpers
+	// Accessibility: Handle keyboard-based action assignment
+	let selectedAction: any = null;
+	let focusedKeyIndex: number = -1;
+	let allKeyContexts: Context[] = [];
 	let announcementEl: HTMLElement;
+
+	// Calculate all key contexts for keyboard navigation
+	$: {
+		allKeyContexts = [];
+		// Add keypad keys
+		for (let r = 0; r < device.rows; r++) {
+			for (let c = 0; c < device.columns; c++) {
+				allKeyContexts.push({
+					device: device.id,
+					profile: profile.id,
+					controller: "Keypad",
+					position: (r * device.columns) + c,
+				});
+			}
+		}
+		// Add encoder keys
+		for (let i = 0; i < device.encoders; i++) {
+			allKeyContexts.push({
+				device: device.id,
+				profile: profile.id,
+				controller: "Encoder",
+				position: i,
+			});
+		}
+	}
 
 	function announceToScreenReader(message: string) {
 		if (announcementEl) {
 			announcementEl.textContent = message;
+		}
+	}
+
+	function handleDeviceKeyDown(event: KeyboardEvent) {
+		if (allKeyContexts.length === 0) return;
+
+		// Initialize focus to first key if not set
+		if (focusedKeyIndex === -1) {
+			focusedKeyIndex = 0;
+			focusKey(focusedKeyIndex);
+			return;
+		}
+
+		switch (event.key) {
+			case "ArrowRight":
+				event.preventDefault();
+				if (focusedKeyIndex < device.rows * device.columns) {
+					// Within keypad
+					const col = focusedKeyIndex % device.columns;
+					if (col < device.columns - 1) {
+						// Move right within the same row
+						focusedKeyIndex = focusedKeyIndex + 1;
+					}
+				} else if (focusedKeyIndex >= device.rows * device.columns) {
+					// Within encoders row
+					const encoderIndex = focusedKeyIndex - (device.rows * device.columns);
+					if (encoderIndex < device.encoders - 1) {
+						focusedKeyIndex = focusedKeyIndex + 1;
+					}
+				}
+				focusKey(focusedKeyIndex);
+				break;
+			case "ArrowLeft":
+				event.preventDefault();
+				if (focusedKeyIndex < device.rows * device.columns) {
+					// Within keypad
+					const col = focusedKeyIndex % device.columns;
+					if (col > 0) {
+						// Move left within the same row
+						focusedKeyIndex = focusedKeyIndex - 1;
+					}
+				} else if (focusedKeyIndex >= device.rows * device.columns) {
+					// Within encoders row
+					const encoderIndex = focusedKeyIndex - (device.rows * device.columns);
+					if (encoderIndex > 0) {
+						focusedKeyIndex = focusedKeyIndex - 1;
+					}
+				}
+				focusKey(focusedKeyIndex);
+				break;
+			case "ArrowDown":
+				event.preventDefault();
+				if (focusedKeyIndex < device.rows * device.columns) {
+					// Within keypad
+					const nextRow = focusedKeyIndex + device.columns;
+					if (nextRow < device.rows * device.columns) {
+						// Move down within keypad
+						focusedKeyIndex = nextRow;
+					} else if (device.encoders > 0) {
+						// Move from last row of keypad to encoders
+						// Try to maintain column position if possible
+						const col = focusedKeyIndex % device.columns;
+						const targetEncoderIndex = Math.min(col, device.encoders - 1);
+						focusedKeyIndex = device.rows * device.columns + targetEncoderIndex;
+					}
+				}
+				// Encoders can't move down further
+				focusKey(focusedKeyIndex);
+				break;
+			case "ArrowUp":
+				event.preventDefault();
+				if (focusedKeyIndex < device.rows * device.columns) {
+					// Within keypad
+					const prevRow = focusedKeyIndex - device.columns;
+					if (prevRow >= 0) {
+						focusedKeyIndex = prevRow;
+					}
+				} else if (focusedKeyIndex >= device.rows * device.columns) {
+					// Within encoders, move up to last row of keypad
+					const encoderIndex = focusedKeyIndex - (device.rows * device.columns);
+					// Try to maintain position or go to closest key
+					const targetCol = Math.min(encoderIndex, device.columns - 1);
+					const lastRowFirstKey = (device.rows - 1) * device.columns;
+					focusedKeyIndex = lastRowFirstKey + targetCol;
+				}
+				focusKey(focusedKeyIndex);
+				break;
+			case "Home":
+				event.preventDefault();
+				if (focusedKeyIndex < device.rows * device.columns) {
+					// Within keypad - go to first key in current row
+					const row = Math.floor(focusedKeyIndex / device.columns);
+					focusedKeyIndex = row * device.columns;
+				} else {
+					// Within encoders - go to first encoder
+					focusedKeyIndex = device.rows * device.columns;
+				}
+				focusKey(focusedKeyIndex);
+				break;
+			case "End":
+				event.preventDefault();
+				if (focusedKeyIndex < device.rows * device.columns) {
+					// Within keypad - go to last key in current row
+					const row = Math.floor(focusedKeyIndex / device.columns);
+					focusedKeyIndex = (row * device.columns) + device.columns - 1;
+				} else {
+					// Within encoders - go to last encoder
+					focusedKeyIndex = device.rows * device.columns + device.encoders - 1;
+				}
+				focusKey(focusedKeyIndex);
+				break;
+		}
+	}
+
+	function focusKey(index: number) {
+		if (index >= 0 && index < allKeyContexts.length) {
+			const context = allKeyContexts[index];
+			// Update focused key index for visual styling
+			focusedKeyIndex = index;
+			// Update aria-activedescendant for screen readers with safe ID
+			// Match the same ID generation as in Key.svelte to avoid NVDA issues
+			const safeDevice = (context.device || 'unknown').replace(/[^a-zA-Z0-9]/g, '_');
+			const safeProfile = (context.profile || 'default').replace(/[^a-zA-Z0-9]/g, '_');
+			const safeController = context.controller || 'Keypad';
+			const keyId = `key_${safeDevice}_${safeProfile}_${safeController}_${context.position}`;
+			const gridElement = document.querySelector('[role="grid"]');
+			if (gridElement) {
+				gridElement.setAttribute("aria-activedescendant", keyId);
+			}
+			// Announce to screen reader
+			const currentSlot = (context.controller === "Encoder" ? profile.sliders : profile.keys)[context.position];
+			const actionName = currentSlot?.action?.name || "Empty";
+			announceToScreenReader(`${context.controller === "Encoder" ? "Encoder" : "Key"} ${context.position + 1}: ${actionName}`);
+		}
+	}
+
+	async function handleAssignAction(action: any, context: Context) {
+		if (!action) {
+			announceToScreenReader("No action selected. Select an action from the action list first.");
+			return;
+		}
+		if (!context) return;
+
+		let array = context.controller == "Encoder" ? profile.sliders : profile.keys;
+		if (array[context.position]) {
+			announceToScreenReader("Key already has an action. Delete the current action first.");
+			return;
+		}
+
+		try {
+			array[context.position] = await invoke("create_instance", { context, action });
+			profile = profile;
+			announceToScreenReader(`${action.name} assigned to ${context.controller} ${context.position + 1}`);
+
+			// Clear the selected action after successful assignment
+			selectedAction = null;
+			// Dispatch event to notify parent to clear action list selection
+			dispatch("actionCleared");
+		} catch (error) {
+			console.error("Failed to assign action:", error);
+			announceToScreenReader("Failed to assign action. Please try again.");
+		}
+	}
+
+	// Export functions for parent component coordination
+	export function handleActionSelected(event: CustomEvent) {
+		selectedAction = event.detail;
+	}
+
+	export function handleActionCleared() {
+		selectedAction = null;
+	}
+
+	// Handle request for selected action from Key component
+	function handleRequestSelectedAction(event: CustomEvent) {
+		if (selectedAction && event.detail.context) {
+			handleAssignAction(selectedAction, event.detail.context);
+		}
+		// Don't announce failure here - handleAssignAction will handle announcements
+	}
+
+	// Handle key actions (Enter, Delete, etc.) on the focused key
+	async function handleKeyAction(event: KeyboardEvent) {
+		if (focusedKeyIndex < 0 || focusedKeyIndex >= allKeyContexts.length) {
+			return;
+		}
+
+		const context = allKeyContexts[focusedKeyIndex];
+		const currentSlot = (context.controller === "Encoder" ? profile.sliders : profile.keys)[context.position];
+
+		switch (event.key) {
+			case "Enter":
+			case " ":
+				event.preventDefault();
+				if (!currentSlot) {
+					// Key is empty - try to assign selected action
+					if (selectedAction) {
+						handleAssignAction(selectedAction, context);
+					} else {
+						announceToScreenReader("No action selected. Select an action from the action list first.");
+					}
+				} else {
+					// If key has action, select it for property inspection
+					inspectedInstance.set(currentSlot.context);
+					announceToScreenReader(`Selected ${currentSlot.action?.name || "action"} for editing.`);
+				}
+				break;
+			case "Delete":
+			case "Backspace":
+				event.preventDefault();
+				if (currentSlot) {
+					await invoke("remove_instance", { context: currentSlot.context });
+					if (inspectedInstance && $inspectedInstance == currentSlot.context) {
+						inspectedInstance.set(null);
+					}
+					// Update the profile to reflect the removal
+					(context.controller === "Encoder" ? profile.sliders : profile.keys)[context.position] = null;
+					profile = profile;
+					announceToScreenReader("Action removed from key.");
+				}
+				break;
+			case "c":
+				if (event.ctrlKey && currentSlot) {
+					event.preventDefault();
+					copiedContext.set(context);
+					announceToScreenReader("Action copied to clipboard.");
+				}
+				break;
+			case "v":
+				if (event.ctrlKey) {
+					event.preventDefault();
+					if ($copiedContext && handlePaste) {
+						handlePaste($copiedContext, context);
+						announceToScreenReader("Action pasted.");
+					}
+				}
+				break;
+			case "F10":
+			case "ContextMenu":
+				event.preventDefault();
+				if (currentSlot) {
+					// Open context menu for key with action
+					const keyElement = document.getElementById(`key-${context.device}-${context.profile}-${context.controller}-${context.position}`);
+					if (keyElement) {
+						const rect = keyElement.getBoundingClientRect();
+						const contextMenuEvent = new MouseEvent('contextmenu', {
+							bubbles: true,
+							cancelable: true,
+							clientX: rect.left + rect.width / 2,
+							clientY: rect.top + rect.height / 2,
+						});
+						keyElement.dispatchEvent(contextMenuEvent);
+						announceToScreenReader("Context menu opened. Use arrow keys to navigate menu items.");
+					}
+				} else {
+					announceToScreenReader("No action on this key to open context menu for.");
+				}
+				break;
+		}
+	}
+
+	// Handle keyboard navigation within the grid
+	function handleGridKeyDown(event: KeyboardEvent) {
+		// Handle arrow keys and navigation keys
+		if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
+			handleDeviceKeyDown(event);
+		} else if (["Enter", " ", "Delete", "Backspace", "F10", "ContextMenu"].includes(event.key) || (event.ctrlKey && (event.key === "c" || event.key === "v"))) {
+			// Forward action keys to the focused key
+			handleKeyAction(event);
 		}
 	}
 </script>
@@ -72,6 +372,7 @@
 {#key device}
 	<!-- Screen reader announcements -->
 	<div bind:this={announcementEl} class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
 	<!-- svelte-ignore a11y-no-static-element-interactions -->
 	<!-- svelte-ignore a11y-click-events-have-key-events -->
 	<div
@@ -83,17 +384,21 @@
 			device.encoders > 0 ? ` and ${device.encoders} encoders` : ""
 		}. Use arrow keys to navigate, Enter to select or assign actions.`}
 		on:click={() => inspectedInstance.set(null)}
+		on:keydown={handleGridKeyDown}
 	>
 		<div class="flex flex-col" role="rowgroup">
 			{#each { length: device.rows } as _, r}
 				<div class="flex flex-row" role="row">
 					{#each { length: device.columns } as _, c}
+						{@const keyIndex = (r * device.columns) + c}
 						<Key
-							context={{ device: device.id, profile: profile.id, controller: "Keypad", position: (r * device.columns) + c }}
-							bind:inslot={profile.keys[(r * device.columns) + c]}
+							context={{ device: device.id, profile: profile.id, controller: "Keypad", position: keyIndex }}
+							bind:inslot={profile.keys[keyIndex]}
+							focused={focusedKeyIndex === keyIndex}
 							on:dragover={handleDragOver}
-							on:drop={(event) => handleDrop(event, "Keypad", (r * device.columns) + c)}
-							on:dragstart={(event) => handleDragStart(event, "Keypad", (r * device.columns) + c)}
+							on:drop={(event) => handleDrop(event, "Keypad", keyIndex)}
+							on:dragstart={(event) => handleDragStart(event, "Keypad", keyIndex)}
+							on:requestSelectedAction={handleRequestSelectedAction}
 							{handlePaste}
 							size={device.id.startsWith("sd-") && device.rows == 4 && device.columns == 8 ? 192 : 144}
 						/>
@@ -105,17 +410,20 @@
 		{#if device.encoders > 0}
 			<div class="flex flex-col" role="rowgroup">
 				<div class="flex flex-row" role="row">
-			{#each { length: device.encoders } as _, i}
-				<Key
-					context={{ device: device.id, profile: profile.id, controller: "Encoder", position: i }}
-					bind:inslot={profile.sliders[i]}
-					on:dragover={handleDragOver}
-					on:drop={(event) => handleDrop(event, "Encoder", i)}
-					on:dragstart={(event) => handleDragStart(event, "Encoder", i)}
-					{handlePaste}
-					size={device.id.startsWith("sd-") && device.rows == 4 && device.columns == 8 ? 192 : 144}
-				/>
-			{/each}
+					{#each { length: device.encoders } as _, i}
+						{@const encoderIndex = (device.rows * device.columns) + i}
+						<Key
+							context={{ device: device.id, profile: profile.id, controller: "Encoder", position: i }}
+							bind:inslot={profile.sliders[i]}
+							focused={focusedKeyIndex === encoderIndex}
+							on:dragover={handleDragOver}
+							on:drop={(event) => handleDrop(event, "Encoder", i)}
+							on:dragstart={(event) => handleDragStart(event, "Encoder", i)}
+							on:requestSelectedAction={handleRequestSelectedAction}
+							{handlePaste}
+							size={device.id.startsWith("sd-") && device.rows == 4 && device.columns == 8 ? 192 : 144}
+						/>
+					{/each}
 				</div>
 			</div>
 		{/if}

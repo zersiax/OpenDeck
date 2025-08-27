@@ -58,19 +58,35 @@
 			profile = profile;
 		}
 	}
+
+	// Accessibility helpers
+	let announcementEl: HTMLElement;
+
+	function announceToScreenReader(message: string) {
+		if (announcementEl) {
+			announcementEl.textContent = message;
+		}
+	}
 </script>
 
 {#key device}
+	<!-- Screen reader announcements -->
+	<div bind:this={announcementEl} class="sr-only" aria-live="polite" aria-atomic="true"></div>
 	<!-- svelte-ignore a11y-no-static-element-interactions -->
+	<!-- svelte-ignore a11y-click-events-have-key-events -->
 	<div
 		class="flex flex-col"
 		class:hidden={$inspectedParentAction || selectedDevice != device.id}
+		role="grid"
+		tabindex="0"
+		aria-label={`${device.name} Stream Deck with ${device.rows * device.columns} keys${
+			device.encoders > 0 ? ` and ${device.encoders} encoders` : ""
+		}. Use arrow keys to navigate, Enter to select or assign actions.`}
 		on:click={() => inspectedInstance.set(null)}
-		on:keyup={() => inspectedInstance.set(null)}
 	>
-		<div class="flex flex-col">
+		<div class="flex flex-col" role="rowgroup">
 			{#each { length: device.rows } as _, r}
-				<div class="flex flex-row">
+				<div class="flex flex-row" role="row">
 					{#each { length: device.columns } as _, c}
 						<Key
 							context={{ device: device.id, profile: profile.id, controller: "Keypad", position: (r * device.columns) + c }}
@@ -86,7 +102,9 @@
 			{/each}
 		</div>
 
-		<div class="flex flex-row">
+		{#if device.encoders > 0}
+			<div class="flex flex-col" role="rowgroup">
+				<div class="flex flex-row" role="row">
 			{#each { length: device.encoders } as _, i}
 				<Key
 					context={{ device: device.id, profile: profile.id, controller: "Encoder", position: i }}
@@ -98,6 +116,21 @@
 					size={device.id.startsWith("sd-") && device.rows == 4 && device.columns == 8 ? 192 : 144}
 				/>
 			{/each}
-		</div>
+				</div>
+			</div>
+		{/if}
 	</div>
 {/key}
+
+<style>
+	.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		border: 0;
+	}
+</style>

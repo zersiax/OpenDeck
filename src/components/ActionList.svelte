@@ -61,7 +61,9 @@
 			{#each actions as action}
 				<div
 					class="flex flex-row items-center my-2 space-x-2"
-					role="group"
+					role="option"
+					aria-selected="false"
+					tabindex="-1"
 					draggable="true"
 					title={$localisations?.[action.plugin]?.[action.uuid]?.Tooltip ?? action.tooltip}
 					on:dragstart={(event) => event.dataTransfer?.setData("action", JSON.stringify(action))}
@@ -77,3 +79,16 @@
 		</details>
 	{/each}
 </div>
+
+<style>
+	.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		border: 0;
+	}
+</style>

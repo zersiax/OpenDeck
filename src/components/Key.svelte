@@ -121,10 +121,46 @@
 			}
 		}
 	})();
+
+	// Accessibility helpers
+	let announcementEl: HTMLElement;
+
+	function announceToScreenReader(message: string) {
+		if (announcementEl) {
+			announcementEl.textContent = message;
+		}
+	}
+
+	function getAccessibleLabel(): string {
+		if (!context) return "Key";
+
+		const position = context.position + 1;
+		const controllerType = context.controller === "Encoder" ? "Encoder" : "Key";
+
+		if (slot) {
+			const actionName = slot.action?.name || "Unknown action";
+			return `${controllerType} ${position}: ${actionName}`;
+		} else {
+			return `${controllerType} ${position}: Empty`;
+		}
+	}
+
+	function getSafeId(): string {
+		if (!context) return "key-unknown";
+		// Replace problematic characters in IDs to avoid screen reader issues
+		const safeDevice = (context.device || 'unknown').replace(/[^a-zA-Z0-9]/g, '_');
+		const safeProfile = (context.profile || 'default').replace(/[^a-zA-Z0-9]/g, '_');
+		const safeController = context.controller || 'Keypad';
+		return `key_${safeDevice}_${safeProfile}_${safeController}_${context.position}`;
+	}
 </script>
+
+<!-- Screen reader announcements -->
+<div bind:this={announcementEl} class="sr-only" aria-live="polite" aria-atomic="true"></div>
 
 <canvas
 	bind:this={canvas}
+	id={getSafeId()}
 	class="relative -m-2 border-2 dark:border-neutral-700 rounded-md outline-none outline-offset-2 outline-blue-500"
 	class:outline-solid={slot && $inspectedInstance == slot.context}
 	class:-m-[2.06rem]={size == 192}
@@ -132,6 +168,10 @@
 	width={size}
 	height={size}
 	style={`transform: scale(${(112 / size) * scale});`}
+	tabindex="-1"
+	role="gridcell"
+	aria-label={getAccessibleLabel()}
+	aria-describedby={slot ? `${getSafeId()}-desc` : undefined}
 	draggable={slot != null}
 	on:dragstart
 	on:dragover
@@ -140,6 +180,12 @@
 	on:keyup|stopPropagation={select}
 	on:contextmenu={contextMenu}
 />
+
+{#if slot}
+	<div id="{getSafeId()}-desc" class="sr-only">
+		{slot.action?.tooltip || "No description available"}
+	</div>
+{/if}
 
 {#if $openContextMenu && $openContextMenu?.context == context}
 	<div
@@ -183,3 +229,16 @@
 {#if slot && showEditor}
 	<InstanceEditor bind:instance={slot} bind:showEditor />
 {/if}
+
+<style>
+	.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		border: 0;
+	}
+</style>

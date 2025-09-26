@@ -29,6 +29,7 @@ static APP_HANDLE: OnceCell<AppHandle> = OnceCell::new();
 #[tokio::main]
 async fn main() {
 	log_panics::init();
+	let _ = fix_path_env::fix();
 
 	#[cfg(target_os = "linux")]
 	// SAFETY: std::env::set_var can cause race conditions in multithreaded contexts. We have not spawned any other threads at this point.
@@ -72,8 +73,13 @@ async fn main() {
 		.setup(|app| {
 			APP_HANDLE.set(app.handle().clone()).unwrap();
 
+			#[cfg(windows)]
 			if !std::env::args().any(|v| v == "--hide") {
 				let _ = app.get_webview_window("main").unwrap().show();
+			}
+			#[cfg(not(windows))]
+			if std::env::args().any(|v| v == "--hide") {
+				let _ = app.get_webview_window("main").unwrap().hide();
 			}
 
 			let old = app.path().config_dir().unwrap().join("com.amansprojects.opendeck");
@@ -84,7 +90,10 @@ async fn main() {
 			let mut settings = store::get_settings()?;
 			use std::cmp::Ordering;
 			use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
-			match semver::Version::parse(built_info::PKG_VERSION)?.cmp(&semver::Version::parse(&settings.value.version)?) {
+			let current_version = semver::Version::parse(built_info::PKG_VERSION)?;
+			let settings_version = semver::Version::parse(&settings.value.version)?;
+			let cmp = (current_version.major, current_version.minor).cmp(&(settings_version.major, settings_version.minor));
+			match cmp {
 				Ordering::Less => {
 					app.get_webview_window("main").unwrap().close().unwrap();
 					app.dialog()
@@ -123,7 +132,7 @@ Enjoy!"#,
 								r#"{PRODUCT_NAME} has been updated to v{}!
 Every update brings features, bug fixes, and other improvements, which I spend my time implementing for free.
 
-If you spent $125 on your hardware, please consider spending $5 on the software that makes it work.
+If you spent $125 on your hardware, please consider spending $10 on the software that makes it work.
 You can donate to support development with just a few clicks on GitHub Sponsors.
 If you have already donated, thank you so much for your support!"#,
 								built_info::PKG_VERSION
@@ -291,7 +300,6 @@ If you have already donated, thank you so much for your support!"#,
 			futures::executor::block_on(plugins::deactivate_plugins());
 			tokio::spawn(elgato::reset_devices());
 			use tauri_plugin_aptabase::EventTracker;
-			let _ = app.track_event("app_exited", None);
 			app.flush_events_blocking();
 		}
 	});

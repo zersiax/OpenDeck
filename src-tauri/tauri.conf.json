@@ -36,7 +36,8 @@
 			"icons/icon.ico"
 		],
 		"macOS": {
-			"exceptionDomain": "localhost"
+			"exceptionDomain": "localhost",
+			"signingIdentity": "-"
 		}
 	},
 	"productName": "OpenDeck",
@@ -60,12 +61,11 @@
 				"minWidth": 800,
 				"minHeight": 600,
 				"center": true,
-				"dragDropEnabled": false,
-				"visible": false
+				"dragDropEnabled": false
 			}
 		],
 		"security": {
-			"csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src * data:; frame-src http://localhost:57118; connect-src ipc: http://ipc.localhost https://openactionapi.github.io https://api.github.com https://raw.githubusercontent.com https://plugins.amankhanna.me;"
+			"csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src * data:; frame-src http://localhost:57118; script-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost https://openactionapi.github.io https://api.github.com https://raw.githubusercontent.com https://plugins.amankhanna.me;"
 		},
 		"withGlobalTauri": true
 	}

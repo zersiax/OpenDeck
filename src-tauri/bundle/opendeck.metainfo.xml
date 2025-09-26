@@ -49,6 +49,40 @@
 	</branding>
 
 	<releases>
+		<release version="2.6.1" date="2025-09-20">
+			<url type="details">https://github.com/nekename/OpenDeck/releases/tag/v2.6.1</url>
+			<description>
+				<ul>
+					<li>Remove app_exited event due to limited function</li>
+					<li>Keep window visible by default except on Windows due to bug on KDE Plasma</li>
+					<li>Remove plugdev group setting from udev rules file</li>
+					<li>Prevent asset choice dialog being shown behind plugin details popup</li>
+					<li>Send titleParametersDidChange alongside willAppear like ESD does</li>
+					<li>Increase width of input fields in the starter pack plugin property inspectors</li>
+					<li>Only compare major and minor app versions to allow downgrading within the same minor version</li>
+					<li>Integrate app icon better on macOS</li>
+					<li>Improve plugin README file discovery for plugin details view</li>
+					<li>Allow ctrl-clicking to open instance context menu on macOS</li>
+				</ul>
+			</description>
+		</release>
+		<release version="2.6.0" date="2025-08-30">
+			<url type="details">https://github.com/nekename/OpenDeck/releases/tag/v2.6.0</url>
+			<description>
+				<ul>
+					<li>Create automated installation script</li>
+					<li>Process messages from the CLI for use in scripts</li>
+					<li>Support disabling Elgato device discovery</li>
+					<li>Implement the `applicationDidLaunch` and `applicationDidTerminate` events</li>
+					<li>Display settings interfaces for supported plugins</li>
+					<li>Display category icons in action list</li>
+					<li>Add a search bar to the action list</li>
+					<li>Build for aarch64-unknown-linux-gnu</li>
+					<li>Move plugins and settings buttons to the top of the sidebar</li>
+					<li>Numerous bug fixes</li>
+				</ul>
+			</description>
+		</release>
 		<release version="2.5.1" date="2025-08-11">
 			<url type="details">https://github.com/nekename/OpenDeck/releases/tag/v2.5.1</url>
 			<description>
